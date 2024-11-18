@@ -37,9 +37,9 @@ jobs:
       matrix:
         python-version: [3.8, 3.9]
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
       - name: Setup Python ${{ matrix.python-version }}
-        uses: actions/setup-python@v4
+        uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python-version }}
           cache: 'pip'
@@ -49,7 +49,9 @@ jobs:
           pip install pytest pytest-cov pytest-integration
       - name: Unit Tests
         if: inputs.test_type == 'unit' || inputs.test_type == 'both'
-        run: pytest tests/unit --cov=${{ inputs.project_path }}
+        run: |
+          mkdir -p htmlcov
+          pytest tests/unit --cov=${{ inputs.project_path }} --cov-report=html
       - name: Integration Tests
         if: inputs.test_type == 'integration' || inputs.test_type == 'both'
         env:
@@ -57,33 +59,36 @@ jobs:
           DATABRICKS_TOKEN: ${{ secrets.DATABRICKS_TOKEN }}
         run: pytest tests/integration
       - name: Upload Coverage Report
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
+        if: always()
         with:
-          name: coverage-report
+          name: coverage-report-${{ matrix.python-version }}
           path: htmlcov/
+          if-no-files-found: warn
 
   build:
     needs: test
     if: inputs.artifact_types == 'wheel' || inputs.artifact_types == 'all'
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
       
       - name: Build Wheel
         run: |
           pip install build
           python -m build
           
-      - uses: actions/upload-artifact@v3
+      - uses: actions/upload-artifact@v4
         with:
           name: dist
           path: dist/*.whl
+          if-no-files-found: error
 
   deploy:
     needs: build
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
       
       - name: Install Databricks CLI
         run: |
@@ -100,5 +105,4 @@ jobs:
           DATABRICKS_TOKEN: ${{ secrets.DATABRICKS_TOKEN }}
         run: |
           echo "Deploying artifacts to ${{ inputs.databricks_path }}"
-          # Add overwrite flag
           databricks workspace import_dir ${{ inputs.project_path }} ${{ inputs.databricks_path }} --overwrite
